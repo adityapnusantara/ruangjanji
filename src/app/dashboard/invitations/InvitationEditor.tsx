@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createInvitation, updateInvitation, publishInvitation } from "./actions";
 import type { InvitationFormData, EventData, GalleryItem, StoryItem } from "./types";
@@ -19,33 +19,72 @@ function emptyEvent(): EventData {
   return { title: "", description: "", eventDate: "", startTime: "", endTime: "", venueName: "", venueAddress: "", mapUrl: "" };
 }
 
-const steps = ["Cover", "Mempelai", "Acara", "Galeri", "Story", "Tambahan", "Review"];
+type SectionKey = "cover" | "couple" | "events" | "gallery" | "story" | "extra" | "review";
+
+const sections: { key: SectionKey; label: string }[] = [
+  { key: "cover", label: "Cover & Judul" },
+  { key: "couple", label: "Mempelai" },
+  { key: "events", label: "Acara" },
+  { key: "gallery", label: "Galeri" },
+  { key: "story", label: "Story" },
+  { key: "extra", label: "Tambahan" },
+  { key: "review", label: "Review & Publish" },
+];
+
+// ── Helper: check if a section has minimal content ──
+
+function sectionFilled(data: InvitationFormData, key: SectionKey): boolean {
+  switch (key) {
+    case "cover":
+      return !!data.cover.coverPhotoUrl || !!data.cover.title || !!data.cover.coverTextTop;
+    case "couple":
+      return !!data.couple.brideName || !!data.couple.groomName;
+    case "events":
+      return data.events.length > 0 && data.events.some((e) => e.title || e.eventDate);
+    case "gallery":
+      return data.gallery.length > 0;
+    case "story":
+      return data.stories.length > 0;
+    case "extra":
+      return !!data.extra.music.url || !!data.extra.quotes.text;
+    case "review":
+      return true;
+  }
+}
 
 export default function InvitationEditor({ initialData }: { initialData?: InvitationFormData }) {
   const router = useRouter();
-  const [step, setStep] = useState(0);
+  const [activeSection, setActiveSection] = useState<SectionKey>("cover");
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [data, setData] = useState<InvitationFormData>(initialData || { ...emptyForm });
 
   const update = <K extends keyof InvitationFormData>(key: K, val: InvitationFormData[K]) =>
     setData((prev) => ({ ...prev, [key]: val }));
 
-  const next = () => step < steps.length - 1 && setStep((s) => s + 1);
-  const prev = () => step > 0 && setStep((s) => s - 1);
+  const filled = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    for (const s of sections) {
+      map[s.key] = sectionFilled(data, s.key);
+    }
+    return map;
+  }, [data]);
 
   const handleSave = async () => {
     setSaving(true);
     setError("");
+    setSuccess("");
     try {
       if (initialData?.id) {
-        // Update existing
         await updateInvitation(initialData.id, data);
-        router.refresh();
+        setSuccess("Tersimpan!");
+        setTimeout(() => setSuccess(""), 2000);
       } else {
-        // Create new
         const result = await createInvitation(data);
-        router.push(`/dashboard/invitations/${result.id}/edit`);
+        setSuccess("Undangan berhasil dibuat!");
+        setTimeout(() => router.push(`/dashboard/invitations/${result.id}/edit`), 1000);
       }
     } catch (e: any) {
       setError(e?.message || "Gagal menyimpan");
@@ -56,74 +95,99 @@ export default function InvitationEditor({ initialData }: { initialData?: Invita
 
   const handlePublish = async () => {
     if (!initialData?.id) return;
-    setSaving(true);
+    setPublishing(true);
     setError("");
+    setSuccess("");
     try {
-      // Save first, then publish
       await updateInvitation(initialData.id, data);
       await publishInvitation(initialData.id);
-      router.refresh();
+      setSuccess("Undangan berhasil dipublikasikan!");
     } catch (e: any) {
       setError(e?.message || "Gagal publish");
     } finally {
-      setSaving(false);
+      setPublishing(false);
     }
   };
 
   return (
-    <div className="mx-auto max-w-3xl">
-      {/* Steps indicator */}
-      <div className="mb-10 flex items-center gap-1 text-xs uppercase tracking-[0.2em] text-[#a47b3d]">
-        {steps.map((s, i) => (
-          <button key={s} onClick={() => setStep(i)} className="flex items-center gap-1 hover:text-[#2b2118] transition-colors">
-            <span className={`flex size-6 items-center justify-center rounded-full text-[11px] font-semibold ${
-              i === step ? "bg-[#c9a45c] text-white" : i < step ? "bg-[#2b2118] text-white" : "border border-[#eadcc6] text-[#a47b3d]"
-            }`}>{i + 1}</span>
-            <span className="hidden sm:inline">{s}</span>
-            {i < steps.length - 1 && <span className="mx-2 inline-block h-px w-6 bg-[#eadcc6]" />}
-          </button>
-        ))}
-      </div>
+    <div className="flex min-h-[70vh] gap-0 rounded-2xl border border-[#eadcc6] bg-white/40">
+      {/* ── Sidebar ── */}
+      <aside className="flex w-60 shrink-0 flex-col border-r border-[#eadcc6] p-5">
+        <nav className="flex-1 space-y-1">
+          {sections.map((s) => {
+            const isActive = activeSection === s.key;
+            const isFilled = filled[s.key];
+            return (
+              <div
+                key={s.key}
+                role="button"
+                tabIndex={0}
+                onClick={() => setActiveSection(s.key)}
+                onKeyDown={(e) => { if (e.key === 'Enter') setActiveSection(s.key); }}
+                className={`flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
+                  isActive
+                    ? "bg-[#2b2118] font-medium text-white"
+                    : "text-[#6f5f4d] hover:bg-[#eadcc6]/40 hover:text-[#2b2118]"
+                }`}
+              >
+                <span className={`flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] ${
+                  isFilled
+                    ? "bg-[#c9a45c] text-white"
+                    : "border border-[#eadcc6] text-[#a47b3d]"
+                }`}>
+                  {isFilled ? "✓" : ""}
+                </span>
+                <span className="truncate">{s.label}</span>
+              </div>
+            );
+          })}
+        </nav>
 
-      {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-5 py-3 text-sm text-red-700">{error}</div>
-      )}
-
-      <div className="min-h-[300px]">
-        {step === 0 && <CoverStep data={data} update={update} />}
-        {step === 1 && <CoupleStep data={data} update={update} />}
-        {step === 2 && <EventsStep data={data} update={update} />}
-        {step === 3 && <GalleryStep data={data} update={update} />}
-        {step === 4 && <StoryStep data={data} update={update} />}
-        {step === 5 && <ExtraStep data={data} update={update} />}
-        {step === 6 && <ReviewStep data={data} saving={saving} isEdit={!!initialData?.id} onSave={handleSave} />}
-      </div>
-
-      <div className="mt-10 flex items-center justify-between border-t border-[#eadcc6] pt-6">
-        <button
-          onClick={prev}
-          disabled={step === 0}
-          className="rounded-lg border border-[#eadcc6] px-5 py-2.5 text-sm text-[#6f5f4d] transition-colors hover:border-[#c9a45c] hover:text-[#c9a45c] disabled:opacity-30"
-        >
-          Sebelumnya
-        </button>
-
-        {step < steps.length - 1 ? (
-          <button
-            onClick={next}
-            className="rounded-lg bg-[#2b2118] px-6 py-2.5 text-sm text-white transition-colors hover:bg-[#c9a45c]"
-          >
-            Selanjutnya
-          </button>
-        ) : (
+        {/* ── Bottom actions ── */}
+        <div className="mt-6 space-y-2 border-t border-[#eadcc6] pt-4">
+          {success && (
+            <p className="rounded-lg bg-green-50 px-3 py-2 text-center text-xs font-medium text-green-700">{success}</p>
+          )}
+          {error && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-center text-xs font-medium text-red-600">{error}</p>
+          )}
           <button
             onClick={handleSave}
             disabled={saving}
-            className="rounded-lg bg-[#c9a45c] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#b38f3d] disabled:opacity-50"
+            className="w-full rounded-lg bg-[#c9a45c] py-2.5 text-xs font-semibold uppercase tracking-[0.15em] text-white transition-colors hover:bg-[#b38f3d] disabled:opacity-50"
           >
-            {saving ? "Menyimpan..." : "Simpan Undangan"}
+            {saving ? "Menyimpan..." : "Simpan Draft"}
           </button>
-        )}
+          {initialData?.id && (
+            <>
+              <button
+                onClick={handlePublish}
+                disabled={publishing}
+                className="w-full rounded-lg border border-[#2b2118] py-2.5 text-xs font-semibold uppercase tracking-[0.15em] text-[#2b2118] transition-colors hover:bg-[#2b2118] hover:text-white disabled:opacity-50"
+              >
+                {publishing ? "Mempublikasi..." : "Publish"}
+              </button>
+              <a
+                href={`/undangan/${initialData.slug || ""}`}
+                target="_blank"
+                className="block w-full rounded-lg border border-[#eadcc6] py-2.5 text-center text-xs text-[#6f5f4d] transition-colors hover:border-[#c9a45c] hover:text-[#c9a45c]"
+              >
+                Lihat Undangan
+              </a>
+            </>
+          )}
+        </div>
+      </aside>
+
+      {/* ── Panel ── */}
+      <div className="flex-1 overflow-y-auto p-8">
+        {activeSection === "cover" && <CoverStep data={data} update={update} />}
+        {activeSection === "couple" && <CoupleStep data={data} update={update} />}
+        {activeSection === "events" && <EventsStep data={data} update={update} />}
+        {activeSection === "gallery" && <GalleryStep data={data} update={update} />}
+        {activeSection === "story" && <StoryStep data={data} update={update} />}
+        {activeSection === "extra" && <ExtraStep data={data} update={update} />}
+        {activeSection === "review" && <ReviewStep data={data} initialData={initialData} />}
       </div>
     </div>
   );
@@ -137,7 +201,7 @@ function CoverStep({ data, update }: { data: InvitationFormData; update: any }) 
 
   return (
     <div className="space-y-5">
-      <StepTitle>Cover Undangan</StepTitle>
+      <SectionTitle>Cover & Judul</SectionTitle>
       <Input label="Judul Undangan" value={data.title} onChange={(v) => update("title", v)} />
       <Input label="Teks Atas Cover (opsional)" value={c.coverTextTop} onChange={(v) => set("coverTextTop", v)} placeholder="Assalamu'alaikum Wr. Wb." />
       <Input label="Teks Bawah Cover (opsional)" value={c.coverTextBottom} onChange={(v) => set("coverTextBottom", v)} placeholder="Tanpa mengurangi rasa hormat..." />
@@ -154,7 +218,7 @@ function CoupleStep({ data, update }: { data: InvitationFormData; update: any })
 
   return (
     <div className="space-y-5">
-      <StepTitle>Informasi Mempelai</StepTitle>
+      <SectionTitle>Informasi Mempelai</SectionTitle>
 
       <div className="rounded-xl border border-[#eadcc6] p-5">
         <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.15em] text-[#c9a45c]">Mempelai Wanita</h3>
@@ -196,7 +260,7 @@ function EventsStep({ data, update }: { data: InvitationFormData; update: any })
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <StepTitle>Detail Acara</StepTitle>
+        <SectionTitle>Detail Acara</SectionTitle>
         <button onClick={add} className="rounded-lg border border-[#eadcc6] px-4 py-2 text-xs uppercase tracking-[0.15em] text-[#c9a45c] transition-colors hover:border-[#c9a45c]">
           + Tambah Acara
         </button>
@@ -220,10 +284,10 @@ function EventsStep({ data, update }: { data: InvitationFormData; update: any })
               <Input label="Mulai" value={ev.startTime} onChange={(v) => setEv(i, "startTime", v)} type="time" />
               <Input label="Selesai" value={ev.endTime} onChange={(v) => setEv(i, "endTime", v)} type="time" />
             </div>
-            <Input label="Nama Tempat" value={ev.venueName} onChange={(v) => setEv(i, "venueName", v)} placeholder="Gedung Serbaguna" className="sm:col-span-2" />
-            <Input label="Alamat" value={ev.venueAddress} onChange={(v) => setEv(i, "venueAddress", v)} placeholder="Jl. ..." className="sm:col-span-2" />
-            <Input label="URL Google Maps (opsional)" value={ev.mapUrl} onChange={(v) => setEv(i, "mapUrl", v)} placeholder="https://maps.app.goo.gl/..." className="sm:col-span-2" />
-            <Input labelJudul={false} label="Deskripsi" value={ev.description} onChange={(v) => setEv(i, "description", v)} placeholder="Informasi tambahan..." className="sm:col-span-2" />
+            <Input label="Nama Tempat" value={ev.venueName} onChange={(v) => setEv(i, "venueName", v)} placeholder="Gedung Serbaguna" />
+            <Input label="Alamat" value={ev.venueAddress} onChange={(v) => setEv(i, "venueAddress", v)} placeholder="Jl. ..." />
+            <Input label="URL Google Maps (opsional)" value={ev.mapUrl} onChange={(v) => setEv(i, "mapUrl", v)} placeholder="https://maps.app.goo.gl/..." />
+            <Input labelJudul={false} label="Deskripsi" value={ev.description} onChange={(v) => setEv(i, "description", v)} placeholder="Informasi tambahan..." />
           </div>
         </div>
       ))}
@@ -248,7 +312,7 @@ function GalleryStep({ data, update }: { data: InvitationFormData; update: any }
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <StepTitle>Galeri Foto &amp; Video</StepTitle>
+        <SectionTitle>Galeri Foto &amp; Video</SectionTitle>
         <div className="flex gap-2">
           <button onClick={() => add("image")} className="rounded-lg border border-[#eadcc6] px-4 py-2 text-xs uppercase tracking-[0.15em] text-[#c9a45c] transition-colors hover:border-[#c9a45c]">
             + Foto
@@ -300,7 +364,7 @@ function StoryStep({ data, update }: { data: InvitationFormData; update: any }) 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <StepTitle>Story / Timeline</StepTitle>
+        <SectionTitle>Story / Timeline</SectionTitle>
         <button onClick={add} className="rounded-lg border border-[#eadcc6] px-4 py-2 text-xs uppercase tracking-[0.15em] text-[#c9a45c] transition-colors hover:border-[#c9a45c]">
           + Tambah Cerita
         </button>
@@ -337,7 +401,7 @@ function ExtraStep({ data, update }: { data: InvitationFormData; update: any }) 
 
   return (
     <div className="space-y-5">
-      <StepTitle>Informasi Tambahan</StepTitle>
+      <SectionTitle>Informasi Tambahan</SectionTitle>
 
       <div className="rounded-xl border border-[#eadcc6] p-5">
         <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.15em] text-[#c9a45c]">Musik Latar</h3>
@@ -364,10 +428,11 @@ function ExtraStep({ data, update }: { data: InvitationFormData; update: any }) 
 
 // ── Step 6: Review ──
 
-function ReviewStep({ data, saving, isEdit, onSave }: { data: InvitationFormData; saving: boolean; isEdit: boolean; onSave: () => void }) {
+function ReviewStep({ data, initialData }: { data: InvitationFormData; initialData?: InvitationFormData }) {
   return (
     <div className="space-y-5">
-      <StepTitle>Review Undangan</StepTitle>
+      <SectionTitle>Review Undangan</SectionTitle>
+      <p className="text-sm text-[#6f5f4d]">Semua data sudah siap. Gunakan tombol di sidebar untuk menyimpan atau mempublikasikan.</p>
 
       <div className="rounded-xl border border-[#eadcc6] p-5">
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-[#c9a45c]">Cover</h3>
@@ -418,41 +483,13 @@ function ReviewStep({ data, saving, isEdit, onSave }: { data: InvitationFormData
           <p key={i} className="text-sm">• <span className="font-medium">{s.title}</span> {s.storyDate && <span className="text-xs text-[#6f5f4d]">({s.storyDate})</span>}</p>
         ))}
       </div>
-
-      <button
-        onClick={onSave}
-        disabled={saving}
-        className="w-full rounded-xl bg-[#c9a45c] py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white transition-colors hover:bg-[#b38f3d] disabled:opacity-50"
-      >
-        {saving ? "Menyimpan..." : "Simpan sebagai Draft"}
-      </button>
-
-      {isEdit && (
-        <div className="flex gap-3">
-          <a
-            href={`/undangan/${data.slug}`}
-            target="_blank"
-            className="flex-1 rounded-xl border border-[#eadcc6] py-4 text-center text-sm text-[#6f5f4d] transition-colors hover:border-[#c9a45c] hover:text-[#c9a45c]"
-          >
-            Lihat Undangan
-          </a>
-          <form action={publishInvitation.bind(null, data.id!)}>
-            <button
-              type="submit"
-              className="rounded-xl bg-[#2b2118] px-8 py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white transition-colors hover:bg-[#c9a45c]"
-            >
-              Publish
-            </button>
-          </form>
-        </div>
-      )}
     </div>
   );
 }
 
 // ── Reusable Components ──
 
-function StepTitle({ children }: { children: React.ReactNode }) {
+function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="font-serif text-3xl tracking-[-0.02em] text-[#2b2118]">{children}</h2>;
 }
 
