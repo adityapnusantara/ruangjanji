@@ -1,16 +1,28 @@
 import { notFound } from "next/navigation";
 import { getPublicInvitation, getPublicWishes } from "@/app/dashboard/invitations/actions";
-
+import { getGuestByToken } from "@/app/dashboard/invitations/guest-actions";
 
 export default async function PublicInvitationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ to?: string }>;
 }) {
   const { slug } = await params;
+  const { to } = await searchParams;
   const inv = await getPublicInvitation(slug);
 
   if (!inv) notFound();
+
+  // Look up guest by token if provided
+  let guestName: string | null = null;
+  if (to) {
+    const guest = await getGuestByToken(to);
+    if (guest) {
+      guestName = guest.name;
+    }
+  }
 
   const settings = inv.settings || {};
   const cover = settings.cover || {};

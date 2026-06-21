@@ -20,6 +20,11 @@ export default async function EditInvitationPage({
       <header className="border-b border-[#eadcc6] bg-white/55 px-6 py-5 backdrop-blur lg:px-10">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between">
           <a href="/dashboard" className="font-serif text-2xl">RuangJanji</a>
+          <div className="flex items-center gap-4 text-sm">
+            <a href={`/dashboard/invitations/${id}/guests`} className="text-[#6f5f4d] hover:text-[#c9a45c]">
+              Kelola Tamu
+            </a>
+          </div>
         </div>
       </header>
 
