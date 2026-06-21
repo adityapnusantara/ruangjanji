@@ -71,6 +71,7 @@ export type StoryItem = {
 export type InvitationFormData = {
   id?: string;
   title: string;
+  slug?: string;
   templateId?: string;
   cover: CoverSettings;
   couple: BrideGroomInfo;

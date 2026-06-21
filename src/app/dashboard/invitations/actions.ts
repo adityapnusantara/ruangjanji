@@ -127,6 +127,7 @@ export async function getInvitation(id: string): Promise<InvitationFormData | nu
   return {
     id: inv.id,
     title: inv.title,
+    slug: inv.slug,
     templateId: inv.template_id,
     cover: settings.cover || { title: "", coverPhotoUrl: "", coverTextTop: "", coverTextBottom: "" },
     couple: settings.couple || { brideName: "", brideParents: "", bridePhotoUrl: "", groomName: "", groomParents: "", groomPhotoUrl: "", instagram: "" },

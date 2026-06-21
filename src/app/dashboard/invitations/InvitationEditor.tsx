@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createInvitation } from "./actions";
+import { createInvitation, updateInvitation, publishInvitation } from "./actions";
 import type { InvitationFormData, EventData, GalleryItem, StoryItem } from "./types";
 
 const emptyForm: InvitationFormData = {
@@ -38,10 +38,33 @@ export default function InvitationEditor({ initialData }: { initialData?: Invita
     setSaving(true);
     setError("");
     try {
-      const result = await createInvitation(data);
-      router.push(`/dashboard/invitations/${result.id}/edit`);
+      if (initialData?.id) {
+        // Update existing
+        await updateInvitation(initialData.id, data);
+        router.refresh();
+      } else {
+        // Create new
+        const result = await createInvitation(data);
+        router.push(`/dashboard/invitations/${result.id}/edit`);
+      }
     } catch (e: any) {
       setError(e?.message || "Gagal menyimpan");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!initialData?.id) return;
+    setSaving(true);
+    setError("");
+    try {
+      // Save first, then publish
+      await updateInvitation(initialData.id, data);
+      await publishInvitation(initialData.id);
+      router.refresh();
+    } catch (e: any) {
+      setError(e?.message || "Gagal publish");
     } finally {
       setSaving(false);
     }
@@ -73,7 +96,7 @@ export default function InvitationEditor({ initialData }: { initialData?: Invita
         {step === 3 && <GalleryStep data={data} update={update} />}
         {step === 4 && <StoryStep data={data} update={update} />}
         {step === 5 && <ExtraStep data={data} update={update} />}
-        {step === 6 && <ReviewStep data={data} saving={saving} onSave={handleSave} />}
+        {step === 6 && <ReviewStep data={data} saving={saving} isEdit={!!initialData?.id} onSave={handleSave} />}
       </div>
 
       <div className="mt-10 flex items-center justify-between border-t border-[#eadcc6] pt-6">
@@ -341,7 +364,7 @@ function ExtraStep({ data, update }: { data: InvitationFormData; update: any }) 
 
 // ── Step 6: Review ──
 
-function ReviewStep({ data, saving, onSave }: { data: InvitationFormData; saving: boolean; onSave: () => void }) {
+function ReviewStep({ data, saving, isEdit, onSave }: { data: InvitationFormData; saving: boolean; isEdit: boolean; onSave: () => void }) {
   return (
     <div className="space-y-5">
       <StepTitle>Review Undangan</StepTitle>
@@ -403,6 +426,26 @@ function ReviewStep({ data, saving, onSave }: { data: InvitationFormData; saving
       >
         {saving ? "Menyimpan..." : "Simpan sebagai Draft"}
       </button>
+
+      {isEdit && (
+        <div className="flex gap-3">
+          <a
+            href={`/undangan/${data.slug}`}
+            target="_blank"
+            className="flex-1 rounded-xl border border-[#eadcc6] py-4 text-center text-sm text-[#6f5f4d] transition-colors hover:border-[#c9a45c] hover:text-[#c9a45c]"
+          >
+            Lihat Undangan
+          </a>
+          <form action={publishInvitation.bind(null, data.id!)}>
+            <button
+              type="submit"
+              className="rounded-xl bg-[#2b2118] px-8 py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white transition-colors hover:bg-[#c9a45c]"
+            >
+              Publish
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

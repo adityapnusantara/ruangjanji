@@ -42,6 +42,11 @@ export default async function PublicInvitationPage({
           />
         )}
         <div className="relative z-10 max-w-2xl">
+          {guestName && (
+            <p className="mb-8 text-sm uppercase tracking-[0.3em] text-[#a47b3d]">
+              Kepada Yth. {guestName}
+            </p>
+          )}
           {cover.coverTextTop && (
             <p className="font-serif text-lg italic tracking-wide text-[#c9a45c]">
               {cover.coverTextTop}
